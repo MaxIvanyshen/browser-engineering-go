@@ -90,7 +90,7 @@ func TestRequest(t *testing.T) {
 			t.Fatalf("failed to parse URL %q: %v", tc.url, err)
 		}
 		log.Printf("Testing URL: %s", tc.url)
-		response, err := Request(url)
+		response, err := Request(url, nil)
 		if err != nil {
 			t.Fatalf("request to %q failed: %v", tc.url, err)
 		}
@@ -128,4 +128,35 @@ func addFileTestCases(testCases *[]struct {
 
 	<-done // wait for tests to finish
 	os.Remove(tmpFile.Name())
+}
+
+func TestCustomHeaders(t *testing.T) {
+	go func() {
+		http.HandleFunc("/headers", func(w http.ResponseWriter, r *http.Request) {
+			customHeader := r.Header.Get("X-Custom-Header")
+			userAgent := r.Header.Get("User-Agent")
+			fmt.Fprintf(w, "%s\n%s", customHeader, userAgent)
+		})
+		log.Fatal(http.ListenAndServe(":8081", nil))
+	}()
+
+	url, err := Parse("http://localhost:8081/headers")
+	if err != nil {
+		t.Fatalf("failed to parse URL: %v", err)
+	}
+
+	headers := map[string]string{
+		"X-Custom-Header": "CustomValue",
+		"User-Agent":      "GoTestClient/1.0",
+	}
+
+	response, err := Request(url, headers)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+
+	expected := "CustomValue\nGoTestClient/1.0"
+	if string(response) != expected {
+		t.Errorf("expected response %q, got %q", expected, string(response))
+	}
 }

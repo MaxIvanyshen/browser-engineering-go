@@ -13,7 +13,34 @@ import (
 
 var allowedSchemes = []string{"http", "https", "file"}
 
-func Request(url *URL) ([]byte, error) {
+type Header struct {
+	Key   string
+	Value string
+}
+
+func (h *Header) String() string {
+	return fmt.Sprintf("%s: %s", h.Key, h.Value)
+}
+
+func NewHeader(key, value string) *Header {
+	return &Header{
+		Key:   key,
+		Value: value,
+	}
+}
+
+func ParseHeader(headerStr string) (*Header, error) {
+	parts := strings.SplitN(headerStr, ":", 2)
+	if len(parts) != 2 {
+		return nil, fmt.Errorf("invalid header format")
+	}
+	return &Header{
+		Key:   strings.TrimSpace(parts[0]),
+		Value: strings.TrimSpace(parts[1]),
+	}, nil
+}
+
+func Request(url *URL, headers map[string]string) ([]byte, error) {
 	hostWithPort := url.Host
 	if !strings.Contains(hostWithPort, ":") {
 		hostWithPort = fmt.Sprintf("%s:%s", url.Host, url.Port)
@@ -34,7 +61,20 @@ func Request(url *URL) ([]byte, error) {
 	}
 	defer conn.Close()
 
-	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", url.Path, url.Host)
+	if headers == nil {
+		headers = make(map[string]string)
+	}
+
+	headers["Host"] = url.Host
+	if _, ok := headers["Connection"]; !ok {
+		headers["Connection"] = "close"
+	}
+
+	req := fmt.Sprintf("GET %s HTTP/1.1\r\n", url.Path)
+	for k, v := range headers {
+		req += fmt.Sprintf("%s: %s\r\n", k, v)
+	}
+	req += "\r\n"
 	if _, err := conn.Write([]byte(req)); err != nil {
 		return nil, err
 	}
@@ -77,14 +117,14 @@ func Request(url *URL) ([]byte, error) {
 		return nil, fmt.Errorf("invalid status code: %s", statusParts[1])
 	}
 
-	headers := make(map[string]string)
+	respHeaders := make(map[string]string)
 	for _, line := range headerLines[1:] {
 		if parts := strings.SplitN(line, ":", 2); len(parts) == 2 {
-			headers[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+			respHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
 		}
 	}
 
-	if clStr, ok := headers["Content-Length"]; ok {
+	if clStr, ok := respHeaders["Content-Length"]; ok {
 		if cl, err := strconv.Atoi(clStr); err == nil && len(bodyData) > cl {
 			bodyData = bodyData[:cl]
 		}

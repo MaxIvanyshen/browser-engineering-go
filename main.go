@@ -18,7 +18,7 @@ func main() {
 		panic(err)
 	}
 
-	content, err := engine.Request(url)
+	content, err := engine.Request(url, nil)
 	if err != nil {
 		panic(err)
 	}
