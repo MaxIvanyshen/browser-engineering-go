@@ -1,9 +1,10 @@
-package telnet
+package engine
 
 import (
 	"fmt"
 	"log"
 	"net/http"
+	"os"
 	"testing"
 )
 
@@ -42,7 +43,8 @@ func TestURL_Parse(t *testing.T) {
 		} else {
 			if err != nil {
 				t.Errorf("unexpected error for input %q: %v", test.input, err)
-			} else if *result != *test.expected {
+			}
+			if result.Host != test.expected.Host || result.Scheme != test.expected.Scheme || result.Path != test.expected.Path {
 				t.Errorf("for input %q, expected %+v, got %+v", test.input, test.expected, result)
 			}
 		}
@@ -51,7 +53,7 @@ func TestURL_Parse(t *testing.T) {
 
 func TestRequest(t *testing.T) {
 	bigStr := ""
-	for range 2000 { // big string for testing, but not too big (to aboid chunked encoding)
+	for range 2000 { // big string for testing, but not too big (to avoid chunked encoding)
 		bigStr += "a"
 	}
 
@@ -76,12 +78,19 @@ func TestRequest(t *testing.T) {
 		{"http://localhost:8080/index", "<html><body>Index Page</body></html>\n"},
 		{"http://localhost:8080/big", bigStr + "\n"},
 	}
+
+	done := make(chan struct{})
+	go addFileTestCases(&testCases, done)
+	<-done            // wait for file test case to be added
+	defer close(done) // close the channel to signal completion
+
 	for _, tc := range testCases {
 		url, err := Parse(tc.url)
 		if err != nil {
 			t.Fatalf("failed to parse URL %q: %v", tc.url, err)
 		}
-		response, err := url.Request()
+		log.Printf("Testing URL: %s", tc.url)
+		response, err := Request(url)
 		if err != nil {
 			t.Fatalf("request to %q failed: %v", tc.url, err)
 		}
@@ -89,4 +98,34 @@ func TestRequest(t *testing.T) {
 			t.Errorf("for URL %q, expected response %q, got %q", tc.url, tc.expected, string(response))
 		}
 	}
+}
+
+func addFileTestCases(testCases *[]struct {
+	url      string
+	expected string
+}, done chan struct{}) {
+	// Create a temporary file for testing file:// URLs
+	tmpFile, err := os.CreateTemp("", "testfile")
+	if err != nil {
+		log.Fatalf("failed to create temp file: %v", err)
+	}
+
+	content := "This is a test file."
+	if _, err := tmpFile.WriteString(content); err != nil {
+		log.Fatalf("failed to write to temp file: %v", err)
+	}
+	tmpFile.Close()
+
+	*testCases = append(*testCases, struct {
+		url      string
+		expected string
+	}{
+		url:      "file://" + tmpFile.Name(),
+		expected: content,
+	})
+
+	done <- struct{}{} // signal that the file test case is added
+
+	<-done // wait for tests to finish
+	os.Remove(tmpFile.Name())
 }

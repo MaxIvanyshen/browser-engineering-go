@@ -4,7 +4,7 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/MaxIvanyshen/browser-engineering-go/telnet"
+	"github.com/MaxIvanyshen/browser-engineering-go/engine"
 )
 
 func main() {
@@ -13,12 +13,12 @@ func main() {
 		return
 	}
 
-	url, err := telnet.Parse(os.Args[1])
+	url, err := engine.Parse(os.Args[1])
 	if err != nil {
 		panic(err)
 	}
 
-	content, err := url.Request()
+	content, err := engine.Request(url)
 	if err != nil {
 		panic(err)
 	}

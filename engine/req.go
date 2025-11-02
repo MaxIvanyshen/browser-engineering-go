@@ -1,66 +1,40 @@
-package telnet
+package engine
 
 import (
 	"bytes"
+	"crypto/tls"
 	"fmt"
+	"io"
 	"net"
+	"os"
 	"strconv"
 	"strings"
 )
 
-type URL struct {
-	Scheme string
-	Host   string
-	Path   string
-}
+var allowedSchemes = []string{"http", "https", "file"}
 
-func Parse(url string) (*URL, error) {
-	parts := strings.Split(url, "://")
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid URL format")
-	}
-	scheme := parts[0]
-	if scheme != "http" {
-		return nil, fmt.Errorf("unsupported scheme: %s", scheme)
-	}
-	if len(parts) > 1 {
-		url = parts[1]
-	} else {
-		url = ""
-	}
-	parts = strings.SplitN(url, "/", 2)
-	host := parts[0]
-
-	if len(parts) > 1 {
-		url = parts[1]
-	} else {
-		url = ""
-	}
-
-	return &URL{
-		Scheme: scheme,
-		Host:   host,
-		Path:   "/" + url,
-	}, nil
-}
-
-func (u *URL) String() string {
-	return fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
-}
-
-func (u *URL) Request() ([]byte, error) {
-	hostWithPort := u.Host
+func Request(url *URL) ([]byte, error) {
+	hostWithPort := url.Host
 	if !strings.Contains(hostWithPort, ":") {
-		hostWithPort += ":80"
+		hostWithPort = fmt.Sprintf("%s:%s", url.Host, url.Port)
 	}
 
-	conn, err := net.Dial("tcp", hostWithPort)
+	var conn io.ReadWriteCloser
+	var err error
+	switch url.Scheme {
+	case "http":
+		conn, err = net.Dial("tcp", hostWithPort)
+	case "https":
+		conn, err = tls.Dial("tcp", hostWithPort, &tls.Config{})
+	case "file":
+		return os.ReadFile(url.Path)
+	}
 	if err != nil {
 		return nil, err
 	}
 	defer conn.Close()
 
-	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", u.Path, u.Host)
+	req := fmt.Sprintf("GET %s HTTP/1.1\r\nHost: %s\r\nConnection: close\r\n\r\n", url.Path, url.Host)
 	if _, err := conn.Write([]byte(req)); err != nil {
 		return nil, err
 	}
