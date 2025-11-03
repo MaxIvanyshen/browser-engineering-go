@@ -17,19 +17,13 @@ const MAX_REDIRECTS = 3
 
 var allowedSchemes = []string{"http", "https", "file", "data"}
 
-type Header struct {
-	Key   string
-	Value string
+type Engine struct {
+	connMap map[string]*io.ReadWriteCloser
 }
 
-func (h *Header) String() string {
-	return fmt.Sprintf("%s: %s", h.Key, h.Value)
-}
-
-func NewHeader(key, value string) *Header {
-	return &Header{
-		Key:   key,
-		Value: value,
+func NewEngine() *Engine {
+	return &Engine{
+		connMap: make(map[string]*io.ReadWriteCloser),
 	}
 }
 
@@ -81,20 +75,7 @@ func urlUnescape(s string) (string, error) {
 	return string(result), nil
 }
 
-func ParseHeader(headerStr string) (*Header, error) {
-	parts := strings.SplitN(headerStr, ":", 2)
-	if len(parts) != 2 {
-		return nil, fmt.Errorf("invalid header format")
-	}
-	return &Header{
-		Key:   strings.TrimSpace(parts[0]),
-		Value: strings.TrimSpace(parts[1]),
-	}, nil
-}
-
-var connMap map[string]*io.ReadWriteCloser = make(map[string]*io.ReadWriteCloser)
-
-func Request(url *URL, headers map[string]string) (*Response, error) {
+func (e *Engine) Request(url *URL, headers map[string]string) (*Response, error) {
 	hostWithPort := url.host
 	if !strings.Contains(hostWithPort, ":") {
 		hostWithPort = fmt.Sprintf("%s:%s", url.host, url.port)
@@ -102,7 +83,7 @@ func Request(url *URL, headers map[string]string) (*Response, error) {
 
 	var conn io.ReadWriteCloser
 	var err error
-	if existingConn, ok := connMap[hostWithPort]; ok {
+	if existingConn, ok := e.connMap[hostWithPort]; ok {
 		conn = *existingConn
 	} else {
 		switch url.scheme {
@@ -232,7 +213,7 @@ func Request(url *URL, headers map[string]string) (*Response, error) {
 			if newURL.redirectCount > MAX_REDIRECTS {
 				return nil, fmt.Errorf("maximum redirects exceeded")
 			}
-			return Request(newURL, headers)
+			return e.Request(newURL, headers)
 		}
 	}
 
@@ -245,13 +226,13 @@ func Request(url *URL, headers map[string]string) (*Response, error) {
 	if connectionHeader, ok := respHeaders["Connection"]; ok {
 		if strings.ToLower(connectionHeader) == "close" {
 			conn.Close()
-			delete(connMap, hostWithPort)
+			delete(e.connMap, hostWithPort)
 		} else if strings.ToLower(connectionHeader) == "keep-alive" {
-			connMap[hostWithPort] = &conn
+			e.connMap[hostWithPort] = &conn
 		}
 	} else {
 		conn.Close()
-		delete(connMap, hostWithPort)
+		delete(e.connMap, hostWithPort)
 	}
 
 	return &Response{

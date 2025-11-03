@@ -13,12 +13,14 @@ func main() {
 		return
 	}
 
+	e := engine.NewEngine()
+
 	url, err := engine.Parse(os.Args[1])
 	if err != nil {
 		panic(err)
 	}
 
-	resp, err := engine.Request(url, nil)
+	resp, err := e.Request(url, nil)
 	if err != nil {
 		panic(err)
 	}

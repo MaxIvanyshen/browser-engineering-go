@@ -88,13 +88,15 @@ func TestRequest(t *testing.T) {
 	<-done            // wait for file test case to be added
 	defer close(done) // close the channel to signal completion
 
+	e := NewEngine()
+
 	for _, tc := range testCases {
 		url, err := Parse(tc.url)
 		if err != nil {
 			t.Fatalf("failed to parse URL %q: %v", tc.url, err)
 		}
 		log.Printf("Testing URL: %s", tc.url)
-		response, err := Request(url, nil)
+		response, err := e.Request(url, nil)
 		if err != nil {
 			t.Fatalf("request to %q failed: %v", tc.url, err)
 		}
@@ -154,7 +156,9 @@ func TestCustomHeaders(t *testing.T) {
 		"User-Agent":      "GoTestClient/1.0",
 	}
 
-	response, err := Request(url, headers)
+	e := NewEngine()
+
+	response, err := e.Request(url, headers)
 	if err != nil {
 		t.Fatalf("request failed: %v", err)
 	}
@@ -180,8 +184,10 @@ func TestConnectionKeepAlive(t *testing.T) {
 		t.Fatalf("failed to parse URL: %v", err)
 	}
 
+	e := NewEngine()
+
 	for i := 1; i <= 3; i++ {
-		response, err := Request(url, nil)
+		response, err := e.Request(url, nil)
 		if err != nil {
 			t.Fatalf("request failed: %v", err)
 		}
@@ -214,12 +220,14 @@ func TestRedirectHandling(t *testing.T) {
 		{"http://browser.engineering/redirect3", "http://browser.engineering/http.html"},
 	}
 
+	e := NewEngine()
+
 	for _, tc := range testCases {
 		url, err := Parse(tc.url)
 		if err != nil {
 			t.Fatalf("failed to parse URL %q: %v", tc.url, err)
 		}
-		response, err := Request(url, nil)
+		response, err := e.Request(url, nil)
 		if err != nil {
 			t.Fatalf("request to %q failed: %v", tc.url, err)
 		}
