@@ -13,6 +13,8 @@ import (
 	"strings"
 )
 
+const MAX_REDIRECTS = 3
+
 var allowedSchemes = []string{"http", "https", "file", "data"}
 
 type Header struct {
@@ -32,6 +34,8 @@ func NewHeader(key, value string) *Header {
 }
 
 type Response struct {
+	URL        string
+	StatusCode int
 	Headers    map[string]string
 	Body       []byte
 	ViewSource bool
@@ -202,7 +206,9 @@ func Request(url *URL, headers map[string]string) (*Response, error) {
 	if len(statusParts) < 2 {
 		return nil, fmt.Errorf("invalid status line")
 	}
-	if _, err := strconv.Atoi(statusParts[1]); err != nil {
+
+	statusCode, err := strconv.Atoi(statusParts[1])
+	if err != nil {
 		return nil, fmt.Errorf("invalid status code: %s", statusParts[1])
 	}
 
@@ -210,6 +216,23 @@ func Request(url *URL, headers map[string]string) (*Response, error) {
 	for _, line := range headerLines[1:] {
 		if parts := strings.SplitN(line, ":", 2); len(parts) == 2 {
 			respHeaders[strings.TrimSpace(parts[0])] = strings.TrimSpace(parts[1])
+		}
+	}
+
+	if statusCode >= 300 && statusCode < 400 {
+		if location, ok := respHeaders["Location"]; ok {
+			if strings.HasPrefix(location, "/") {
+				location = fmt.Sprintf("%s://%s%s", url.scheme, url.host, location)
+			}
+			newURL, err := Parse(location)
+			if err != nil {
+				return nil, err
+			}
+			newURL.redirectCount = url.redirectCount + 1
+			if newURL.redirectCount > MAX_REDIRECTS {
+				return nil, fmt.Errorf("maximum redirects exceeded")
+			}
+			return Request(newURL, headers)
 		}
 	}
 
@@ -232,6 +255,8 @@ func Request(url *URL, headers map[string]string) (*Response, error) {
 	}
 
 	return &Response{
+		URL:        url.String(),
+		StatusCode: statusCode,
 		Headers:    respHeaders,
 		Body:       bodyData,
 		ViewSource: url.ViewSource,

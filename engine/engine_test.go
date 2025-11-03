@@ -192,3 +192,39 @@ func TestConnectionKeepAlive(t *testing.T) {
 		}
 	}
 }
+
+func TestRedirectHandling(t *testing.T) {
+	go func() {
+		http.HandleFunc("/redirect", func(w http.ResponseWriter, r *http.Request) {
+			http.Redirect(w, r, "/final", http.StatusFound)
+		})
+		http.HandleFunc("/final", func(w http.ResponseWriter, r *http.Request) {
+			fmt.Fprintln(w, "Final Destination")
+		})
+		log.Fatal(http.ListenAndServe(":8083", nil))
+	}()
+
+	testCases := []struct {
+		url   string
+		final string
+	}{
+		{"http://localhost:8083/redirect", "http://localhost:8083/final"},
+		{"http://browser.engineering/redirect", "http://browser.engineering/http.html"},
+		{"http://browser.engineering/redirect2", "http://browser.engineering/http.html"},
+		{"http://browser.engineering/redirect3", "http://browser.engineering/http.html"},
+	}
+
+	for _, tc := range testCases {
+		url, err := Parse(tc.url)
+		if err != nil {
+			t.Fatalf("failed to parse URL %q: %v", tc.url, err)
+		}
+		response, err := Request(url, nil)
+		if err != nil {
+			t.Fatalf("request to %q failed: %v", tc.url, err)
+		}
+		if response.URL != tc.final {
+			t.Errorf("for URL %q, expected response %q, got %q", tc.url, tc.final, response.URL)
+		}
+	}
+}

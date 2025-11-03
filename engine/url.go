@@ -12,6 +12,8 @@ type URL struct {
 	path       string
 	port       string
 	ViewSource bool
+
+	redirectCount int
 }
 
 func Parse(url string) (*URL, error) {
