@@ -23,7 +23,7 @@ func main() {
 		panic(err)
 	}
 
-	showContent(resp)
+	utils.Show(resp)
 }
 
 func showContent(resp *engine.Response) {
