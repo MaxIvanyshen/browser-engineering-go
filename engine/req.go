@@ -3,15 +3,17 @@ package engine
 import (
 	"bytes"
 	"crypto/tls"
+	"encoding/base64"
 	"fmt"
 	"io"
+	"log"
 	"net"
 	"os"
 	"strconv"
 	"strings"
 )
 
-var allowedSchemes = []string{"http", "https", "file"}
+var allowedSchemes = []string{"http", "https", "file", "data"}
 
 type Header struct {
 	Key   string
@@ -29,6 +31,52 @@ func NewHeader(key, value string) *Header {
 	}
 }
 
+type Response struct {
+	Headers    map[string]string
+	Body       []byte
+	ViewSource bool
+}
+
+// urlUnescape decodes URL-encoded string
+func urlUnescape(s string) (string, error) {
+	var result []byte
+	i := 0
+	for i < len(s) {
+		if s[i] == '%' {
+			if i+2 >= len(s) {
+				return "", fmt.Errorf("invalid percent encoding")
+			}
+			high := s[i+1]
+			low := s[i+2]
+			var val byte
+			if high >= '0' && high <= '9' {
+				val = (high - '0') << 4
+			} else if high >= 'A' && high <= 'F' {
+				val = (high - 'A' + 10) << 4
+			} else if high >= 'a' && high <= 'f' {
+				val = (high - 'a' + 10) << 4
+			} else {
+				return "", fmt.Errorf("invalid hex digit: %c", high)
+			}
+			if low >= '0' && low <= '9' {
+				val |= low - '0'
+			} else if low >= 'A' && low <= 'F' {
+				val |= low - 'A' + 10
+			} else if low >= 'a' && low <= 'f' {
+				val |= low - 'a' + 10
+			} else {
+				return "", fmt.Errorf("invalid hex digit: %c", low)
+			}
+			result = append(result, val)
+			i += 3
+		} else {
+			result = append(result, s[i])
+			i++
+		}
+	}
+	return string(result), nil
+}
+
 func ParseHeader(headerStr string) (*Header, error) {
 	parts := strings.SplitN(headerStr, ":", 2)
 	if len(parts) != 2 {
@@ -40,7 +88,7 @@ func ParseHeader(headerStr string) (*Header, error) {
 	}, nil
 }
 
-func Request(url *URL, headers map[string]string) ([]byte, error) {
+func Request(url *URL, headers map[string]string) (*Response, error) {
 	hostWithPort := url.Host
 	if !strings.Contains(hostWithPort, ":") {
 		hostWithPort = fmt.Sprintf("%s:%s", url.Host, url.Port)
@@ -54,7 +102,43 @@ func Request(url *URL, headers map[string]string) ([]byte, error) {
 	case "https":
 		conn, err = tls.Dial("tcp", hostWithPort, &tls.Config{})
 	case "file":
-		return os.ReadFile(url.Path)
+		bytes, err := os.ReadFile(url.Path)
+		if err != nil {
+			return nil, err
+		}
+		return &Response{
+			Headers: make(map[string]string),
+			Body:    bytes,
+		}, nil
+	case "data":
+		log.Println("data URL detected", url.Path)
+		commaIndex := strings.Index(url.Path, ",")
+		if commaIndex == -1 {
+			return nil, fmt.Errorf("invalid data URL")
+		}
+		meta := url.Path[:commaIndex]
+		data := url.Path[commaIndex+1:]
+		isBase64 := strings.Contains(meta, ";base64")
+		if isBase64 {
+			decoded, err := base64.StdEncoding.DecodeString(data)
+			if err != nil {
+				return nil, err
+			}
+			return &Response{
+				Headers: make(map[string]string),
+				Body:    decoded,
+			}, nil
+		}
+		unescaped, err := urlUnescape(data)
+		if err != nil {
+			return nil, err
+		}
+		return &Response{
+			Headers: make(map[string]string),
+			Body:    []byte(unescaped),
+		}, nil
+	default:
+		return nil, fmt.Errorf("unsupported scheme: %s", url.Scheme)
 	}
 	if err != nil {
 		return nil, err
@@ -130,5 +214,9 @@ func Request(url *URL, headers map[string]string) ([]byte, error) {
 		}
 	}
 
-	return bodyData, nil
+	return &Response{
+		Headers:    respHeaders,
+		Body:       bodyData,
+		ViewSource: url.ViewSource,
+	}, nil
 }

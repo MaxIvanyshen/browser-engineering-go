@@ -18,17 +18,21 @@ func main() {
 		panic(err)
 	}
 
-	content, err := engine.Request(url, nil)
+	resp, err := engine.Request(url, nil)
 	if err != nil {
 		panic(err)
 	}
 
-	showContent(content)
+	showContent(resp)
 }
 
-func showContent(content []byte) {
+func showContent(resp *engine.Response) {
+	if resp.ViewSource {
+		fmt.Println(string(resp.Body))
+		return
+	}
 	inTag := false
-	for _, b := range content {
+	for _, b := range resp.Body {
 		if b == '<' {
 			inTag = true
 		} else if b == '>' {

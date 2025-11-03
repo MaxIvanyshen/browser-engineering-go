@@ -7,14 +7,31 @@ import (
 )
 
 type URL struct {
-	Scheme string
-	Host   string
-	Path   string
-	Port   string
+	Scheme     string
+	Host       string
+	Path       string
+	Port       string
+	ViewSource bool
 }
 
 func Parse(url string) (*URL, error) {
+	if strings.HasPrefix(url, "view-source:") {
+		parsed, err := Parse(strings.TrimPrefix(url, "view-source:"))
+		if err != nil {
+			return nil, err
+		}
+		parsed.ViewSource = true
+		return parsed, nil
+	}
 	parts := strings.Split(url, "://")
+	if strings.HasPrefix(url, "data:") {
+		return &URL{
+			Scheme: "data",
+			Host:   "",
+			Path:   url[5:],
+			Port:   "",
+		}, nil
+	}
 	if len(parts) != 2 {
 		return nil, fmt.Errorf("invalid URL format")
 	}

@@ -77,6 +77,10 @@ func TestRequest(t *testing.T) {
 		{"http://localhost:8080/test", "Hello, World!\n"},
 		{"http://localhost:8080/index", "<html><body>Index Page</body></html>\n"},
 		{"http://localhost:8080/big", bigStr + "\n"},
+
+		// data URL test cases
+		{"data:,Hello%2C%20World!", "Hello, World!"},
+		{"data:text/plain;base64,SGVsbG8sIFdvcmxkIQ==", "Hello, World!"},
 	}
 
 	done := make(chan struct{})
@@ -94,8 +98,8 @@ func TestRequest(t *testing.T) {
 		if err != nil {
 			t.Fatalf("request to %q failed: %v", tc.url, err)
 		}
-		if string(response) != tc.expected {
-			t.Errorf("for URL %q, expected response %q, got %q", tc.url, tc.expected, string(response))
+		if string(response.Body) != tc.expected {
+			t.Errorf("for URL %q, expected response %q, got %q", tc.url, tc.expected, string(response.Body))
 		}
 	}
 }
@@ -156,7 +160,7 @@ func TestCustomHeaders(t *testing.T) {
 	}
 
 	expected := "CustomValue\nGoTestClient/1.0"
-	if string(response) != expected {
-		t.Errorf("expected response %q, got %q", expected, string(response))
+	if string(response.Body) != expected {
+		t.Errorf("expected response %q, got %q", expected, string(response.Body))
 	}
 }
