@@ -19,11 +19,13 @@ var allowedSchemes = []string{"http", "https", "file", "data"}
 
 type Engine struct {
 	connMap map[string]*io.ReadWriteCloser
+	cache   map[string]*CacheValue[*Response]
 }
 
 func NewEngine() *Engine {
 	return &Engine{
 		connMap: make(map[string]*io.ReadWriteCloser),
+		cache:   make(map[string]*CacheValue[*Response]),
 	}
 }
 
@@ -76,6 +78,15 @@ func urlUnescape(s string) (string, error) {
 }
 
 func (e *Engine) Request(url *URL, headers map[string]string) (*Response, error) {
+	if cacheValue, ok := e.cache[url.String()]; ok {
+		if cacheValue.IsExpired() {
+			delete(e.cache, url.String())
+		} else {
+			return cacheValue.Value, nil
+		}
+	}
+	delete(e.cache, url.String())
+
 	hostWithPort := url.host
 	if !strings.Contains(hostWithPort, ":") {
 		hostWithPort = fmt.Sprintf("%s:%s", url.host, url.port)
@@ -235,11 +246,29 @@ func (e *Engine) Request(url *URL, headers map[string]string) (*Response, error)
 		delete(e.connMap, hostWithPort)
 	}
 
-	return &Response{
+	r := &Response{
 		URL:        url.String(),
 		StatusCode: statusCode,
 		Headers:    respHeaders,
 		Body:       bodyData,
 		ViewSource: url.ViewSource,
-	}, nil
+	}
+
+	cacheControl, ok := respHeaders["Cache-Control"]
+	if ok && strings.Contains(cacheControl, "max-age") {
+		parts := strings.Split(cacheControl, "=")
+		if len(parts) != 2 {
+			return r, nil
+		}
+		maxAgeStr := strings.TrimSpace(parts[1])
+		maxAge, err := strconv.Atoi(maxAgeStr)
+		if err != nil || maxAge <= 0 {
+			return r, nil
+		}
+		e.cache[url.String()] = NewCacheValue(r, int64(maxAge))
+	} else {
+		delete(e.cache, url.String())
+	}
+
+	return r, nil
 }

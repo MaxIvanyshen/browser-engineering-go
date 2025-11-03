@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"testing"
+	"time"
 )
 
 func TestURL_Parse(t *testing.T) {
@@ -234,5 +235,63 @@ func TestRedirectHandling(t *testing.T) {
 		if response.URL != tc.final {
 			t.Errorf("for URL %q, expected response %q, got %q", tc.url, tc.final, response.URL)
 		}
+	}
+}
+
+func TestCacheBehavior(t *testing.T) {
+	var requestCount int
+	go func() {
+		http.HandleFunc("/cache", func(w http.ResponseWriter, r *http.Request) {
+			requestCount++
+			w.Header().Set("Cache-Control", "max-age=2")
+			fmt.Fprintln(w, "Cached Content")
+		})
+		log.Fatal(http.ListenAndServe(":8084", nil))
+	}()
+
+	url, err := Parse("http://localhost:8084/cache")
+	if err != nil {
+		t.Fatalf("failed to parse URL: %v", err)
+	}
+
+	e := NewEngine()
+
+	// First request should hit the server
+	response, err := e.Request(url, nil)
+	if err != nil {
+		t.Fatalf("first request failed: %v", err)
+	}
+	if string(response.Body) != "Cached Content\n" {
+		t.Errorf("expected 'Cached Content', got %q", string(response.Body))
+	}
+	if requestCount != 1 {
+		t.Errorf("expected 1 request, got %d", requestCount)
+	}
+
+	// Second request should be served from cache
+	response, err = e.Request(url, nil)
+	if err != nil {
+		t.Fatalf("second request failed: %v", err)
+	}
+	if string(response.Body) != "Cached Content\n" {
+		t.Errorf("expected 'Cached Content', got %q", string(response.Body))
+	}
+	if requestCount != 1 {
+		t.Errorf("expected 1 request, got %d", requestCount)
+	}
+
+	// Wait for cache to expire
+	time.Sleep(3 * time.Second)
+
+	// Third request should hit the server again
+	response, err = e.Request(url, nil)
+	if err != nil {
+		t.Fatalf("third request failed: %v", err)
+	}
+	if string(response.Body) != "Cached Content\n" {
+		t.Errorf("expected 'Cached Content', got %q", string(response.Body))
+	}
+	if requestCount != 2 {
+		t.Errorf("expected 2 requests, got %d", requestCount)
 	}
 }

@@ -9,5 +9,5 @@
 - [ ] Entities
 - [x] Redirections
 - [x] Keep-alive connections
-- [ ] Caching
+- [x] Caching
 - [ ] Compression
