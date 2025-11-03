@@ -17,9 +17,9 @@ func TestURL_Parse(t *testing.T) {
 		{
 			input: "http://example.com/path",
 			expected: &URL{
-				Scheme: "http",
-				Host:   "example.com",
-				Path:   "/path",
+				scheme: "http",
+				host:   "example.com",
+				path:   "/path",
 			},
 			expectError: false,
 		},
@@ -44,7 +44,7 @@ func TestURL_Parse(t *testing.T) {
 			if err != nil {
 				t.Errorf("unexpected error for input %q: %v", test.input, err)
 			}
-			if result.Host != test.expected.Host || result.Scheme != test.expected.Scheme || result.Path != test.expected.Path {
+			if result.host != test.expected.host || result.scheme != test.expected.scheme || result.path != test.expected.path {
 				t.Errorf("for input %q, expected %+v, got %+v", test.input, test.expected, result)
 			}
 		}
@@ -162,5 +162,33 @@ func TestCustomHeaders(t *testing.T) {
 	expected := "CustomValue\nGoTestClient/1.0"
 	if string(response.Body) != expected {
 		t.Errorf("expected response %q, got %q", expected, string(response.Body))
+	}
+}
+
+func TestConnectionKeepAlive(t *testing.T) {
+	var connectionCount int
+	go func() {
+		http.HandleFunc("/keepalive", func(w http.ResponseWriter, r *http.Request) {
+			connectionCount++
+			fmt.Fprintf(w, "Connection count: %d", connectionCount)
+		})
+		log.Fatal(http.ListenAndServe(":8082", nil))
+	}()
+
+	url, err := Parse("http://localhost:8082/keepalive")
+	if err != nil {
+		t.Fatalf("failed to parse URL: %v", err)
+	}
+
+	for i := 1; i <= 3; i++ {
+		response, err := Request(url, nil)
+		if err != nil {
+			t.Fatalf("request failed: %v", err)
+		}
+
+		expected := fmt.Sprintf("Connection count: %d", i)
+		if string(response.Body) != expected {
+			t.Errorf("expected response %q, got %q", expected, string(response.Body))
+		}
 	}
 }

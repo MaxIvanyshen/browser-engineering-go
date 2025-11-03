@@ -7,6 +7,6 @@
 - [x] data scheme
 - [x] view-source scheme
 - [ ] Entities
-- [ ] Keep-alive connections
+- [x] Keep-alive connections
 - [ ] Caching
 - [ ] Compression

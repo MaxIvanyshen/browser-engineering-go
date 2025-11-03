@@ -88,73 +88,78 @@ func ParseHeader(headerStr string) (*Header, error) {
 	}, nil
 }
 
+var connMap map[string]*io.ReadWriteCloser = make(map[string]*io.ReadWriteCloser)
+
 func Request(url *URL, headers map[string]string) (*Response, error) {
-	hostWithPort := url.Host
+	hostWithPort := url.host
 	if !strings.Contains(hostWithPort, ":") {
-		hostWithPort = fmt.Sprintf("%s:%s", url.Host, url.Port)
+		hostWithPort = fmt.Sprintf("%s:%s", url.host, url.port)
 	}
 
 	var conn io.ReadWriteCloser
 	var err error
-	switch url.Scheme {
-	case "http":
-		conn, err = net.Dial("tcp", hostWithPort)
-	case "https":
-		conn, err = tls.Dial("tcp", hostWithPort, &tls.Config{})
-	case "file":
-		bytes, err := os.ReadFile(url.Path)
-		if err != nil {
-			return nil, err
-		}
-		return &Response{
-			Headers: make(map[string]string),
-			Body:    bytes,
-		}, nil
-	case "data":
-		log.Println("data URL detected", url.Path)
-		commaIndex := strings.Index(url.Path, ",")
-		if commaIndex == -1 {
-			return nil, fmt.Errorf("invalid data URL")
-		}
-		meta := url.Path[:commaIndex]
-		data := url.Path[commaIndex+1:]
-		isBase64 := strings.Contains(meta, ";base64")
-		if isBase64 {
-			decoded, err := base64.StdEncoding.DecodeString(data)
+	if existingConn, ok := connMap[hostWithPort]; ok {
+		conn = *existingConn
+	} else {
+		switch url.scheme {
+		case "http":
+			conn, err = net.Dial("tcp", hostWithPort)
+		case "https":
+			conn, err = tls.Dial("tcp", hostWithPort, &tls.Config{})
+		case "file":
+			bytes, err := os.ReadFile(url.path)
 			if err != nil {
 				return nil, err
 			}
 			return &Response{
 				Headers: make(map[string]string),
-				Body:    decoded,
+				Body:    bytes,
 			}, nil
+		case "data":
+			log.Println("data URL detected", url.path)
+			commaIndex := strings.Index(url.path, ",")
+			if commaIndex == -1 {
+				return nil, fmt.Errorf("invalid data URL")
+			}
+			meta := url.path[:commaIndex]
+			data := url.path[commaIndex+1:]
+			isBase64 := strings.Contains(meta, ";base64")
+			if isBase64 {
+				decoded, err := base64.StdEncoding.DecodeString(data)
+				if err != nil {
+					return nil, err
+				}
+				return &Response{
+					Headers: make(map[string]string),
+					Body:    decoded,
+				}, nil
+			}
+			unescaped, err := urlUnescape(data)
+			if err != nil {
+				return nil, err
+			}
+			return &Response{
+				Headers: make(map[string]string),
+				Body:    []byte(unescaped),
+			}, nil
+		default:
+			return nil, fmt.Errorf("unsupported scheme: %s", url.scheme)
 		}
-		unescaped, err := urlUnescape(data)
 		if err != nil {
 			return nil, err
 		}
-		return &Response{
-			Headers: make(map[string]string),
-			Body:    []byte(unescaped),
-		}, nil
-	default:
-		return nil, fmt.Errorf("unsupported scheme: %s", url.Scheme)
 	}
-	if err != nil {
-		return nil, err
-	}
-	defer conn.Close()
 
 	if headers == nil {
 		headers = make(map[string]string)
 	}
 
-	headers["Host"] = url.Host
+	headers["Host"] = url.host
 	if _, ok := headers["Connection"]; !ok {
 		headers["Connection"] = "close"
 	}
 
-	req := fmt.Sprintf("GET %s HTTP/1.1\r\n", url.Path)
+	req := fmt.Sprintf("GET %s HTTP/1.1\r\n", url.path)
 	for k, v := range headers {
 		req += fmt.Sprintf("%s: %s\r\n", k, v)
 	}
@@ -212,6 +217,18 @@ func Request(url *URL, headers map[string]string) (*Response, error) {
 		if cl, err := strconv.Atoi(clStr); err == nil && len(bodyData) > cl {
 			bodyData = bodyData[:cl]
 		}
+	}
+
+	if connectionHeader, ok := respHeaders["Connection"]; ok {
+		if strings.ToLower(connectionHeader) == "close" {
+			conn.Close()
+			delete(connMap, hostWithPort)
+		} else if strings.ToLower(connectionHeader) == "keep-alive" {
+			connMap[hostWithPort] = &conn
+		}
+	} else {
+		conn.Close()
+		delete(connMap, hostWithPort)
 	}
 
 	return &Response{

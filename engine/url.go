@@ -7,10 +7,10 @@ import (
 )
 
 type URL struct {
-	Scheme     string
-	Host       string
-	Path       string
-	Port       string
+	scheme     string
+	host       string
+	path       string
+	port       string
 	ViewSource bool
 }
 
@@ -26,10 +26,10 @@ func Parse(url string) (*URL, error) {
 	parts := strings.Split(url, "://")
 	if strings.HasPrefix(url, "data:") {
 		return &URL{
-			Scheme: "data",
-			Host:   "",
-			Path:   url[5:],
-			Port:   "",
+			scheme: "data",
+			host:   "",
+			path:   url[5:],
+			port:   "",
 		}, nil
 	}
 	if len(parts) != 2 {
@@ -62,13 +62,13 @@ func Parse(url string) (*URL, error) {
 	}
 
 	return &URL{
-		Scheme: scheme,
-		Host:   host,
-		Path:   "/" + url,
-		Port:   port,
+		scheme: scheme,
+		host:   host,
+		path:   "/" + url,
+		port:   port,
 	}, nil
 }
 
 func (u *URL) String() string {
-	return fmt.Sprintf("%s://%s%s", u.Scheme, u.Host, u.Path)
+	return fmt.Sprintf("%s://%s%s", u.scheme, u.host, u.path)
 }
