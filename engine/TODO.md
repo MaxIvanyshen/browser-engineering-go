@@ -6,8 +6,10 @@
     - [x] User-Agent header
 - [x] data scheme
 - [x] view-source scheme
-- [ ] Entities
+- [x] Entities
 - [x] Redirections
 - [x] Keep-alive connections
 - [x] Caching
 - [ ] Compression
+    - [ ] Transfer-Encoding: chunked
+    - [ ] gzip
