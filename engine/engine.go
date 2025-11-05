@@ -168,8 +168,11 @@ func (e *Engine) Request(url *URL, headers map[string]string) (*Response, error)
 	buf := make([]byte, 1024)
 	for {
 		n, err := conn.Read(buf)
-		if err != nil || n == 0 {
+		if err == io.EOF || n == 0 {
 			break
+		}
+		if err != nil {
+			return nil, err
 		}
 		responseBuf.Write(buf[:n])
 	}
