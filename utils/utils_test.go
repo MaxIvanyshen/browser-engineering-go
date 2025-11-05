@@ -66,3 +66,61 @@ func TestShow(t *testing.T) {
 		})
 	}
 }
+
+func TestEntityDecoding(t *testing.T) {
+	tests := []struct {
+		name     string
+		input    *engine.Response
+		expected string
+	}{
+		{
+			name: "Basic entities",
+			input: &engine.Response{
+				Body:       []byte("Hello &lt;World&gt; &amp; Everyone"),
+				ViewSource: false,
+			},
+			expected: "Hello <World> & Everyone",
+		},
+		{
+			name: "Quotes and apostrophes",
+			input: &engine.Response{
+				Body:       []byte("&quot;It's a test&quot;"),
+				ViewSource: false,
+			},
+			expected: "\"It's a test\"",
+		},
+		{
+			name: "No entities",
+			input: &engine.Response{
+				Body:       []byte("Just a normal string."),
+				ViewSource: false,
+			},
+			expected: "Just a normal string.",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			// Capture stdout
+			oldStdout := os.Stdout
+			r, w, _ := os.Pipe()
+			os.Stdout = w
+
+			// Call Show
+			Show(tt.input)
+
+			// Restore stdout
+			w.Close()
+			os.Stdout = oldStdout
+
+			// Read captured output
+			var buf bytes.Buffer
+			io.Copy(&buf, r)
+			output := buf.String()
+
+			if output != tt.expected {
+				t.Errorf("expected %q, got %q", tt.expected, output)
+			}
+		})
+	}
+}
