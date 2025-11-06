@@ -295,3 +295,29 @@ func TestCacheBehavior(t *testing.T) {
 		t.Errorf("expected 2 requests, got %d", requestCount)
 	}
 }
+
+func TestChunkedResponseHandling(t *testing.T) {
+	go func() {
+		http.HandleFunc("/chunked", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Transfer-Encoding", "chunked")
+			w.Write([]byte("Hello, this is a chunked response."))
+		})
+		log.Fatal(http.ListenAndServe(":8085", nil))
+	}()
+
+	url, err := Parse("http://localhost:8085/chunked")
+	if err != nil {
+		t.Fatalf("failed to parse URL: %v", err)
+	}
+	e := NewEngine()
+	response, err := e.Request(url, nil)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	body := response.Body
+
+	expected := "Hello, this is a chunked response."
+	if string(body) != expected {
+		t.Errorf("body mismatch\n got: %q\nwant: %q", body, expected)
+	}
+}

@@ -249,6 +249,15 @@ func (e *Engine) Request(url *URL, headers map[string]string) (*Response, error)
 		delete(e.connMap, hostWithPort)
 	}
 
+	if transferEncoding, ok := respHeaders["Transfer-Encoding"]; ok && strings.ToLower(transferEncoding) == "chunked" {
+		log.Println("Decoding chunked body")
+		log.Printf("Raw body data: %q", bodyData)
+		bodyData, err = decodeChunkedBody(bodyData)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	r := &Response{
 		URL:        url.String(),
 		StatusCode: statusCode,
@@ -274,4 +283,36 @@ func (e *Engine) Request(url *URL, headers map[string]string) (*Response, error)
 	}
 
 	return r, nil
+}
+
+func decodeChunkedBody(body []byte) ([]byte, error) {
+	decoded := bytes.Buffer{}
+	for i := 0; i < len(body); {
+		j := i
+		for j < len(body) && body[j] != '\r' {
+			j++
+		}
+		if j >= len(body)-1 || body[j] != '\r' || body[j+1] != '\n' {
+			return nil, fmt.Errorf("invalid chunked encoding")
+		}
+		sizeStr := string(body[i:j])
+		size, err := strconv.ParseInt(sizeStr, 16, 64)
+		if err != nil {
+			return nil, fmt.Errorf("invalid chunk size: %v", err)
+		}
+		if size == 0 {
+			break
+		}
+		i = j + 2
+		if i+int(size) > len(body) {
+			return nil, fmt.Errorf("chunk size exceeds body length")
+		}
+		decoded.Write(body[i : i+int(size)])
+		i += int(size)
+		if i+1 >= len(body) || body[i] != '\r' || body[i+1] != '\n' {
+			return nil, fmt.Errorf("invalid chunked encoding after chunk data")
+		}
+		i += 2
+	}
+	return decoded.Bytes(), nil
 }
