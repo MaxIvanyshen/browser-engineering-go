@@ -1,6 +1,7 @@
 package engine
 
 import (
+	"compress/gzip"
 	"fmt"
 	"log"
 	"net/http"
@@ -317,6 +318,35 @@ func TestChunkedResponseHandling(t *testing.T) {
 	body := response.Body
 
 	expected := "Hello, this is a chunked response."
+	if string(body) != expected {
+		t.Errorf("body mismatch\n got: %q\nwant: %q", body, expected)
+	}
+}
+
+func TestGzipResponseHandling(t *testing.T) {
+	go func() {
+		http.HandleFunc("/gzip", func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Encoding", "gzip")
+			data := []byte("Hello, Gzip!")
+			gz := gzip.NewWriter(w)
+			gz.Write(data)
+			gz.Close()
+		})
+		log.Fatal(http.ListenAndServe(":8086", nil))
+	}()
+
+	url, err := Parse("http://localhost:8086/gzip")
+	if err != nil {
+		t.Fatalf("failed to parse URL: %v", err)
+	}
+	e := NewEngine()
+	response, err := e.Request(url, nil)
+	if err != nil {
+		t.Fatalf("request failed: %v", err)
+	}
+	body := response.Body
+
+	expected := "Hello, Gzip!"
 	if string(body) != expected {
 		t.Errorf("body mismatch\n got: %q\nwant: %q", body, expected)
 	}

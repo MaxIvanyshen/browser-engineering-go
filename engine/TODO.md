@@ -10,6 +10,6 @@
 - [x] Redirections
 - [x] Keep-alive connections
 - [x] Caching
-- [ ] Compression
-    - [ ] Transfer-Encoding: chunked
-    - [ ] gzip
+- [x] Compression
+    - [x] Transfer-Encoding: chunked
+    - [x] gzip

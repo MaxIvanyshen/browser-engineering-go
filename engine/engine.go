@@ -2,6 +2,7 @@ package engine
 
 import (
 	"bytes"
+	"compress/gzip"
 	"crypto/tls"
 	"encoding/base64"
 	"fmt"
@@ -249,9 +250,16 @@ func (e *Engine) Request(url *URL, headers map[string]string) (*Response, error)
 		delete(e.connMap, hostWithPort)
 	}
 
+	if contentEncoding, ok := respHeaders["Content-Encoding"]; ok && strings.ToLower(contentEncoding) == "gzip" {
+		log.Println("Decompressing gzip body")
+		bodyData, err = decodeGzipBody(bodyData)
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	if transferEncoding, ok := respHeaders["Transfer-Encoding"]; ok && strings.ToLower(transferEncoding) == "chunked" {
 		log.Println("Decoding chunked body")
-		log.Printf("Raw body data: %q", bodyData)
 		bodyData, err = decodeChunkedBody(bodyData)
 		if err != nil {
 			return nil, err
@@ -315,4 +323,17 @@ func decodeChunkedBody(body []byte) ([]byte, error) {
 		i += 2
 	}
 	return decoded.Bytes(), nil
+}
+
+func decodeGzipBody(body []byte) ([]byte, error) {
+	reader, err := gzip.NewReader(bytes.NewReader(body))
+	if err != nil {
+		return nil, err
+	}
+	defer reader.Close()
+	decompressed, err := io.ReadAll(reader)
+	if err != nil {
+		return nil, err
+	}
+	return decompressed, nil
 }
